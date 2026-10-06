@@ -839,9 +839,9 @@ function renderEmpCard(person,selected,locked){
       const btn=document.createElement("button"); btn.className="emp-save"; btn.textContent="Guardar"; btn.disabled=!chosen;
       btn.addEventListener("click",async()=>{
         if(!chosen) return; btn.disabled=true; btn.textContent="Guardando…"; let ok=true;
-        try{ await persistOne(person.e,chosen); }catch(e){ ok=false; }
+        let why=""; try{ await persistOne(person.e,chosen); }catch(e){ ok=false; why=(e&&e.message)||String(e); }
         if(ok){ seg.classList.add("locked"); renderAction("locked"); }
-        else{ btn.disabled=false; btn.textContent="Guardar"; alert("No se pudo guardar. Revisa tu conexión e inténtalo de nuevo."); }
+        else{ btn.disabled=false; btn.textContent="Guardar"; alert("No se pudo guardar.\n\nDetalle: "+why+(/row-level security/i.test(why)?"\n\nLa base aún no tiene empleados: el administrador debe entrar primero.":"")); }
       });
       action.innerHTML=""; action.appendChild(btn);
     }
@@ -859,8 +859,12 @@ function renderEmpCard(person,selected,locked){
 async function startAdmin(){
   document.querySelector(".wrap").style.display="";
   initStore();
-  await loadEmpleados();
-  await loadTallas();
+  try{ await loadEmpleados(); await loadTallas(); }
+  catch(err){
+    console.error(err);
+    openBaseModal('<h3>No se pudo leer la base de Supabase</h3><div class="bm-warn">'+String((err&&(err.message||err.details||err.hint))||err).replace(/</g,"&lt;")+'</div><p>Mándale una captura de este mensaje a quien te ayuda con la página.</p><div class="bm-actions"><button class="bm-btn primary" onclick="closeBaseModal()">Cerrar</button></div>');
+    return;
+  }
   fillSummary(); renderConteo(); renderResHead(); fillFilters(); renderPeople(); recalcResumen();
   initEvents(); subscribeRealtime();
   setSaveState(storeOK?"saved":"local");
@@ -908,7 +912,7 @@ function requireAdmin(force){
 async function adminLogin(password){
   if(!initStore()) return "Falta configurar Supabase en el código.";
   const {error} = await sb.auth.signInWithPassword({email:ADMIN_EMAIL, password});
-  if(error) return "Contraseña incorrecta.";
+  if(error){ console.error(error); const m=(error.message||"")+""; return /invalid login/i.test(m) ? "Contraseña o usuario incorrecto (revisa que exista "+ADMIN_EMAIL+" en Supabase > Authentication > Users)." : /confirm/i.test(m) ? "El usuario administrador no está confirmado en Supabase." : "No se pudo entrar: "+m; }
   IS_ADMIN = true; return null;
 }
 
